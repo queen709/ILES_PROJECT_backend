@@ -1,162 +1,153 @@
-from django.conf import settings
-from django.core.exceptions import ValidationError
-from django.db import models
-from django.utils import timezone
+"""Django settings for ILES project."""
 
-User = settings.AUTH_USER_MODEL
+import os
+from pathlib import Path
+from datetime import timedelta
+
+import dj_database_url
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
-class PlacementStatus(models.TextChoices):
-    PENDING = "Pending", "Pending"
-    ACTIVE = "Active", "Active"
-    COMPLETED = "Completed", "Completed"
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-dev-key")
+DEBUG = os.getenv("DJANGO_DEBUG", "False") == "True"
+ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",")]
 
 
-class InternshipPlacement(models.Model):
-    student = models.OneToOneField(User, on_delete=models.CASCADE, related_name="placement")
-    workplace_supervisor = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="workplace_students"
+# Application definition
+
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'corsheaders',
+    'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
+    'django_filters',
+    'accounts',
+    'internships',
+    'notifications',
+]
+
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+ROOT_URLCONF = 'config.urls'
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = 'config.wsgi.application'
+
+
+# Database
+# https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+
+DATABASES = {
+    "default": dj_database_url.parse(
+        os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
+        conn_max_age=600,
     )
-    academic_supervisor = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="academic_students"
-    )
-    company_name = models.CharField(max_length=200)
-    company_address = models.CharField(max_length=255, blank=True)
-    position_title = models.CharField(max_length=120, blank=True)
-    start_date = models.DateField()
-    end_date = models.DateField()
-    status = models.CharField(max_length=20, choices=PlacementStatus.choices, default=PlacementStatus.PENDING)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def clean(self):
-        if self.end_date <= self.start_date:
-            raise ValidationError("End date must be after start date.")
-        if self.student.role != "Student":
-            raise ValidationError("Placement student must have role Student.")
-        if self.workplace_supervisor and self.workplace_supervisor.role != "WorkplaceSupervisor":
-            raise ValidationError("Workplace supervisor must have role WorkplaceSupervisor.")
-        if self.academic_supervisor and self.academic_supervisor.role != "AcademicSupervisor":
-            raise ValidationError("Academic supervisor must have role AcademicSupervisor.")
-
-    def __str__(self):
-        return f"{self.student.username} - {self.company_name}"
+}
 
 
-class WeeklyLogState(models.TextChoices):
-    DRAFT = "Draft", "Draft"
-    SUBMITTED = "Submitted", "Submitted"
-    REVIEWED = "Reviewed", "Reviewed"
-    APPROVED = "Approved", "Approved"
-    REJECTED = "Rejected", "Rejected"
+# Password validation
+# https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
+
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
 
 
-class WeeklyLog(models.Model):
-    placement = models.ForeignKey(InternshipPlacement, on_delete=models.CASCADE, related_name="weekly_logs")
-    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name="weekly_logs")
-    week_number = models.PositiveIntegerField()
-    week_start_date = models.DateField()
-    week_end_date = models.DateField()
-    title = models.CharField(max_length=180)
-    activities = models.TextField()
-    skills_learned = models.TextField(blank=True)
-    challenges = models.TextField(blank=True)
-    supervisor_comment = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=WeeklyLogState.choices, default=WeeklyLogState.DRAFT)
-    submitted_at = models.DateTimeField(null=True, blank=True)
-    reviewed_at = models.DateTimeField(null=True, blank=True)
-    approved_at = models.DateTimeField(null=True, blank=True)
-    due_date = models.DateField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+# Internationalization
+# https://docs.djangoproject.com/en/6.0/topics/i18n/
 
-    class Meta:
-        ordering = ["-created_at"]
-        unique_together = ("student", "week_number")
+LANGUAGE_CODE = "en-us"
 
-    def clean(self):
-        if self.student.role != "Student":
-            raise ValidationError("Weekly logs can only belong to student users.")
-        if self.placement.student_id != self.student_id:
-            raise ValidationError("Selected placement does not belong to this student.")
-        if self.week_end_date < self.week_start_date:
-            raise ValidationError("Week end date must be on or after week start date.")
-        if self.status == WeeklyLogState.APPROVED and self.pk:
-            original = WeeklyLog.objects.get(pk=self.pk)
-            changed = (
-                original.title != self.title
-                or original.activities != self.activities
-                or original.skills_learned != self.skills_learned
-                or original.challenges != self.challenges
-            )
-            if changed:
-                raise ValidationError("Approved weekly logs cannot be edited.")
+TIME_ZONE = "Africa/Kampala"
 
-    def can_transition_to(self, new_status):
-        transitions = {
-            WeeklyLogState.DRAFT: {WeeklyLogState.SUBMITTED},
-            WeeklyLogState.SUBMITTED: {WeeklyLogState.REVIEWED, WeeklyLogState.REJECTED},
-            WeeklyLogState.REVIEWED: {WeeklyLogState.APPROVED, WeeklyLogState.DRAFT},
-            WeeklyLogState.REJECTED: {WeeklyLogState.DRAFT},
-            WeeklyLogState.APPROVED: set(),
-        }
-        return new_status in transitions.get(self.status, set())
+USE_I18N = True
 
-    def transition_to(self, new_status):
-        if not self.can_transition_to(new_status):
-            raise ValidationError(f"Invalid transition from {self.status} to {new_status}.")
-        if new_status == WeeklyLogState.SUBMITTED and timezone.now().date() > self.due_date:
-            raise ValidationError("Submission deadline has passed for this weekly log.")
-        self.status = new_status
-        now = timezone.now()
-        if new_status == WeeklyLogState.SUBMITTED:
-            self.submitted_at = now
-        elif new_status == WeeklyLogState.REVIEWED:
-            self.reviewed_at = now
-        elif new_status == WeeklyLogState.APPROVED:
-            self.approved_at = now
-        self.save()
-
-    def __str__(self):
-        return f"{self.student.username} - Week {self.week_number}"
+USE_TZ = True
 
 
-class EvaluationCriteria(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    description = models.TextField(blank=True)
-    weight = models.FloatField(help_text="Weight as decimal fraction, e.g. 0.4")
-    is_active = models.BooleanField(default=True)
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-    def clean(self):
-        if not 0 <= self.weight <= 1:
-            raise ValidationError("Weight must be between 0 and 1.")
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
-    def __str__(self):
-        return f"{self.name} ({self.weight})"
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+AUTH_USER_MODEL = "accounts.CustomUser"
 
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+    "DEFAULT_FILTER_BACKENDS": (
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
+    ),
+}
 
-class Evaluation(models.Model):
-    weekly_log = models.OneToOneField(WeeklyLog, on_delete=models.CASCADE, related_name="evaluation")
-    evaluator = models.ForeignKey(User, on_delete=models.CASCADE, related_name="evaluations")
-    technical_skills = models.PositiveSmallIntegerField()
-    communication = models.PositiveSmallIntegerField()
-    professionalism = models.PositiveSmallIntegerField()
-    comments = models.TextField(blank=True)
-    final_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=6),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+}
 
-    def clean(self):
-        for field_name in ("technical_skills", "communication", "professionalism"):
-            value = getattr(self, field_name)
-            if value < 0 or value > 100:
-                raise ValidationError(f"{field_name} score must be between 0 and 100.")
-        if self.evaluator.role not in {"AcademicSupervisor", "WorkplaceSupervisor"}:
-            raise ValidationError("Only supervisors can create evaluations.")
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+]
 
-    def save(self, *args, **kwargs):
-        self.final_score = (self.technical_skills * 0.4) + (self.communication * 0.3) + (self.professionalism * 0.3)
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"Evaluation for log {self.weekly_log_id}: {self.final_score}"
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "iles@example.com")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
