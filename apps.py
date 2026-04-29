@@ -1,8 +1,5 @@
 from django.contrib import admin
 
-from .models import Evaluation, EvaluationCriteria, InternshipPlacement, WeeklyLog
+from .models import Notification
 
-admin.site.register(InternshipPlacement)
-admin.site.register(WeeklyLog)
-admin.site.register(EvaluationCriteria)
-admin.site.register(Evaluation)
+admin.site.register(Notification)
